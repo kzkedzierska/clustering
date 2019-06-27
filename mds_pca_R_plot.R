@@ -8,6 +8,7 @@ mds <- iris[,1:4] %>%
   mutate(method = "mds", 
          label = iris$Species) %>% 
   rename(x = V1, y = V2)
+
 pca <- (iris[,1:4] %>% prcomp())$x %>% 
   as.data.frame() %>%
   mutate(method = "pca", 
