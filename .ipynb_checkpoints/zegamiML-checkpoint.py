@@ -18,8 +18,8 @@ except ImportError:
 
 from PIL import Image
 from sklearn.decomposition import PCA 
-from sklearn.manifold import MDS
-from sklearn.manifold import TSNE
+from sklearn.manifold import MDS, TSNE, Isomap
+from sklearn.cross_decomposition import PLSRegression
 import umap
 
 # Set defaults
@@ -132,8 +132,23 @@ def reduce_and_plot(zegami_table_in, zegami_table_out, image_path,
     # process images
     data, skipped = process_images(images)
     
+    # remove columns with variance = 0
+    df = pd.DataFrame(data)
+    df = df.loc[:, ~np.isclose(0, df.var())]
+    
+    non_rows = df.shape[0]
+    non_cols = df.shape[1]
+    if non_rows == 0 or non_cols == 0:
+        err_msg = ("After removing the columns with zero variance"
+                   f"inavlid shape! {non_rows} x {non_cols}."
+                  "Data saved as: ./tmp_processed_images.tsv ")
+        np.savetxt("./tmp_processed_images.tsv",
+                   data, delimiter = "\t")
+        raise Exception(err_msg_empty)
+    
+    
     # reduce dimensions
-    reduced_df = reduce_dimensions(data, analysis_type = analysis_type)
+    reduced_df = reduce_dimensions(df, analysis_type = analysis_type)
     
     # create labels for columns    
     x_label = analysis_type + "_x"
@@ -186,41 +201,28 @@ def process_images(images):
 
 def reduce_dimensions(data, analysis_type = "PCA"):
     """
-    reduces dimensionality of a given data set applying one of 3 supported
-    methods: PCA, MDS, tSNE and UMAP.
-
-    input
+    reduces dimensionality of a given data set applying one of the supported
+    methods: PCA, MDS, tSNE, Isomap, UMAP and PLSR.
     """
     
-    supported_types = ["PCA", "TSNE", "UMAP", "MDS"]
+    supported_types = {
+        "PCA" : PCA(n_components = 2),
+        "TSNE" : TSNE(init = 'pca'), 
+        "UMAP" : umap.UMAP(), 
+        "MDS" : MDS(n_components = 2),
+        "ISOMAP": Isomap(n_components = 2),
+        "PLSR": PLSRegression(n_components = 2)
+    }
 
     analysis_type = analysis_type.upper()
 
-    if analysis_type not in supported_types:
+    if analysis_type not in supported_types.keys():
         error_message = f"Unsupported analysis type: {analysis_type}"
         logging.error(error_message)
         raise ValueError(error_message)
 
-    # UMAP
-    if analysis_type == "UMAP":
-        logging.debug("Using UMAP as dimensionality reduction method")
-        reducer = umap.UMAP()
-
-    # TSNE
-    elif analysis_type == "TSNE":
-        logging.debug("Using tSNE as dimentionality reduction method")
-        reducer = TSNE(init = 'pca', random_state = 7)
-        # reducer = TSNE(n_components=2, init='pca', random_state=0)
-    
-    # MDS
-    elif analysis_type == "MDS":
-        logging.debug("Using MDS as dimentionality reduction method")
-        reducer = MDS(n_components = 2)
-        
-    # PCA
-    else: #elif analysis_type = "PCA":
-        logging.debug("Using PCA as dimensionality reduction method")
-        reducer = PCA(n_components = 2)
+    logging.debug(f"Using {analysis_type} as dimensionality reduction method")
+    reducer = supported_types[analysis_type]
     
     X = reducer.fit_transform(data)
     df = pd.DataFrame({"x": X[:, 0], "y": X[:, 1]})
